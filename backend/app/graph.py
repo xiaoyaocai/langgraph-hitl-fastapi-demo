@@ -2,7 +2,7 @@ from typing import Literal, Optional
 from langgraph.graph import StateGraph, MessagesState, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.checkpoint.memory import MemorySaver
+from app.mongo import get_short_term_memory_checkpointer
 
 # --- Model Definition ---
 # OpenAI API key configured in .env file
@@ -120,7 +120,7 @@ builder.add_edge('assistant_draft', 'human_feedback')
 builder.add_conditional_edges('human_feedback', feedback_router, {'assistant_finalize': 'assistant_finalize', 'assistant_draft': 'assistant_draft'})
 builder.add_edge('assistant_finalize', END)
 
-memory = MemorySaver()
+memory = get_short_term_memory_checkpointer()
 graph = builder.compile(interrupt_before=["human_feedback"], checkpointer=memory)
 
 # --- Exports ---

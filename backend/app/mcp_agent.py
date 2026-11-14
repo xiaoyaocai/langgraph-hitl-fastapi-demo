@@ -6,9 +6,9 @@ from typing import Callable, Optional
 from langgraph.types import interrupt
 from langchain_core.tools import BaseTool, tool
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from app.mongo import get_short_term_memory_checkpointer
 
 
 def load_mcp_servers(config_path):
@@ -94,17 +94,17 @@ async def get_agent():
     """
     global _cached_checkpointer
     
-    # Create checkpointer once and reuse it
+    # Shared MongoDB short-term memory checkpointer (survives process restarts)
     if _cached_checkpointer is None:
-        _cached_checkpointer = InMemorySaver()
-    
+        _cached_checkpointer = get_short_term_memory_checkpointer()
+
     tools_with_hitl = await get_mcp_tools_with_hitl()
-    
+
     agent = create_react_agent(
         model="openai:gpt-4o-mini",
         prompt="You are a GitHub Assistant that helps users manage their GitHub repositories and workflows.",
         tools=tools_with_hitl,
-        checkpointer=_cached_checkpointer,  # Shared across all agents
+        checkpointer=_cached_checkpointer,
     )
     
     return agent
