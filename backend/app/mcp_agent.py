@@ -3,11 +3,13 @@ import os
 from pathlib import Path
 from typing import Callable, Optional
 
-from langgraph.types import interrupt
-from langchain_core.tools import BaseTool, tool
 from langchain_core.runnables import RunnableConfig
-from langgraph.prebuilt import create_react_agent
+from langchain_core.tools import BaseTool, tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+from langgraph.types import interrupt
+
+from app.memory import format_long_term_context, resolve_user_id
 from app.mongo import get_short_term_memory_checkpointer
 
 
@@ -35,16 +37,18 @@ def add_approval(main_tool: Callable | BaseTool) -> BaseTool:
     if not isinstance(main_tool, BaseTool):
         main_tool = tool(main_tool)
 
-    @tool(  
+    @tool(
         main_tool.name,
         description=main_tool.description,
-        args_schema=main_tool.args_schema
+        args_schema=main_tool.args_schema,
     )
     async def call_main_tool_with_hitl(config: RunnableConfig, **tool_input):
-        decision = interrupt({
-            "awaiting": main_tool.name,
-            "args": tool_input
-        })
+        decision = interrupt(
+            {
+                "awaiting": main_tool.name,
+                "args": tool_input,
+            }
+        )
 
         # tool approved
         if isinstance(decision, dict) and decision.get("approved"):
@@ -52,8 +56,10 @@ def add_approval(main_tool: Callable | BaseTool) -> BaseTool:
             return result
 
         # tool rejected
-        return "Cancelled by human. Continue without executing that tool and provide next steps."
-        
+        return (
+            "Cancelled by human. Continue without executing that tool "
+            "and provide next steps."
+        )
 
     return call_main_tool_with_hitl
 
@@ -62,6 +68,20 @@ def add_approval(main_tool: Callable | BaseTool) -> BaseTool:
 _cached_tools: Optional[list] = None
 _cached_checkpointer = None
 
+BASE_AGENT_PROMPT = (
+    "You are a GitHub Assistant that helps users manage their "
+    "GitHub repositories and workflows."
+)
+
+
+def build_agent_prompt(user_id: str | None = None) -> str:
+    """Compose agent system prompt with optional long-term memory context."""
+    uid = user_id or resolve_user_id()
+    memory_block = format_long_term_context(uid)
+    if not memory_block:
+        return BASE_AGENT_PROMPT
+    return f"{BASE_AGENT_PROMPT}\n\n{memory_block}"
+
 
 async def get_mcp_tools_with_hitl():
     """
@@ -69,31 +89,32 @@ async def get_mcp_tools_with_hitl():
     Caches the result to avoid reloading on every request.
     """
     global _cached_tools
-    
+
     if _cached_tools is not None:
         return _cached_tools
-    
+
     config_path = Path(__file__).parent.parent / "config" / "mcp_servers.json"
-    
+
     mcp_servers = load_mcp_servers(str(config_path))
     client = MultiServerMCPClient(mcp_servers)
     mcp_tools = await client.get_tools()
     tools_with_hitl = [add_approval(tool) for tool in mcp_tools]
-    
+
     _cached_tools = tools_with_hitl
     return tools_with_hitl
 
 
-async def get_agent():
+async def get_agent(user_id: str | None = None):
     """
     Get or create the MCP agent with HITL-wrapped tools.
-    
+
     NOTE: We create a fresh agent each time but use a SHARED checkpointer.
     This allows different requests to access the same conversation state
     while avoiding issues with cached agent instances.
+    Long-term memories for ``user_id`` are injected into the system prompt.
     """
     global _cached_checkpointer
-    
+
     # Shared MongoDB short-term memory checkpointer (survives process restarts)
     if _cached_checkpointer is None:
         _cached_checkpointer = get_short_term_memory_checkpointer()
@@ -102,16 +123,13 @@ async def get_agent():
 
     agent = create_react_agent(
         model="openai:gpt-4o-mini",
-        prompt="You are a GitHub Assistant that helps users manage their GitHub repositories and workflows.",
+        prompt=build_agent_prompt(user_id),
         tools=tools_with_hitl,
         checkpointer=_cached_checkpointer,
     )
-    
+
     return agent
 
 
-
-
-
 # --- Exports ---
-__all__ = ["get_agent"]
+__all__ = ["get_agent", "build_agent_prompt"]

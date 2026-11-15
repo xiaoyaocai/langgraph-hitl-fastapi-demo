@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from uuid import uuid4
 from app.models import StartRequest, GraphResponse, ResumeRequest
 from app.graph import graph
+from app.memory import DEFAULT_USER_ID, resolve_user_id
 
 router = APIRouter()
 
@@ -27,14 +28,21 @@ def run_graph_and_response(input_state, config):
 @router.post("/graph/start", response_model=GraphResponse)
 def start_graph(request: StartRequest):
     thread_id = str(uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    user_id = resolve_user_id(explicit=request.user_id) or DEFAULT_USER_ID
+    config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
     initial_state = {"human_request": request.human_request}
 
     return run_graph_and_response(initial_state, config)
 
 @router.post("/graph/resume", response_model=GraphResponse)
 def resume_graph(request: ResumeRequest):
-    config = {"configurable": {"thread_id": request.thread_id}}
+    user_id = resolve_user_id(explicit=request.user_id) or DEFAULT_USER_ID
+    config = {
+        "configurable": {
+            "thread_id": request.thread_id,
+            "user_id": user_id,
+        }
+    }
     state = {"status": request.review_action}
     if request.human_comment is not None:
         state["human_comment"] = request.human_comment

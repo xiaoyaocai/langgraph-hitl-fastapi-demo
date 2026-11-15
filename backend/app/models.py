@@ -1,17 +1,18 @@
 from pydantic import BaseModel
 from typing import Optional
 from typing import Literal
-from typing import Literal
 
 # --- Start Graph Run ---
 class StartRequest(BaseModel):
     human_request: str
+    user_id: Optional[str] = None
 
 # --- Resume Paused Graph Run ---
 class ResumeRequest(BaseModel):
     thread_id: str
     review_action: Literal["approved", "feedback"]
     human_comment: Optional[str] = None
+    user_id: Optional[str] = None
 
 # --- Minimal API Response ---
 class GraphResponse(BaseModel):
@@ -22,3 +23,4 @@ class GraphResponse(BaseModel):
 class ApproveRequest(BaseModel):
     thread_id: str
     approve_action: Literal["approved", "rejected"]
+    user_id: Optional[str] = None

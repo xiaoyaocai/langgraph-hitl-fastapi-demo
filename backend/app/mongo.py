@@ -22,6 +22,7 @@ DEFAULT_MONGO_URI = (
 DEFAULT_DB = "rag_db"
 DEFAULT_CHECKPOINT_COLLECTION = "short_term_memory"
 DEFAULT_WRITES_COLLECTION = "short_term_memory_writes"
+DEFAULT_LONG_TERM_COLLECTION = "long_term_memory"
 
 _MESSAGE_ROLE_ZH = {
     "human": "用户",
@@ -336,5 +337,13 @@ def get_short_term_memory_collection():
     """Direct access to the short_term_memory collection (for inspection/ops)."""
     name = os.getenv(
         "MONGO_SHORT_TERM_COLLECTION", DEFAULT_CHECKPOINT_COLLECTION
+    )
+    return get_mongo_client()[get_mongo_db()][name]
+
+
+def get_long_term_memory_collection():
+    """Direct access to rag_db.long_term_memory."""
+    name = os.getenv(
+        "MONGO_LONG_TERM_COLLECTION", DEFAULT_LONG_TERM_COLLECTION
     )
     return get_mongo_client()[get_mongo_db()][name]

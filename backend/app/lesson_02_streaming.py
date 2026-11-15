@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from uuid import uuid4
 from app.models import StartRequest, GraphResponse, ResumeRequest
 from app.graph import graph
+from app.memory import DEFAULT_USER_ID, resolve_user_id
 from sse_starlette.sse import EventSourceResponse
 import json
 
@@ -16,10 +17,12 @@ run_configs = {}
 @router.post("/graph/stream/create", response_model=GraphResponse)
 def create_graph_streaming(request: StartRequest):
     thread_id = str(uuid4())
-    
+    user_id = resolve_user_id(explicit=request.user_id) or DEFAULT_USER_ID
+
     run_configs[thread_id] = {
         "type": "start",
-        "human_request": request.human_request
+        "human_request": request.human_request,
+        "user_id": user_id,
     }
     
     return GraphResponse(
@@ -31,11 +34,13 @@ def create_graph_streaming(request: StartRequest):
 @router.post("/graph/stream/resume", response_model=GraphResponse)
 def resume_graph_streaming(request: ResumeRequest):
     thread_id = request.thread_id
-    
+    user_id = resolve_user_id(explicit=request.user_id) or DEFAULT_USER_ID
+
     run_configs[thread_id] = {
         "type": "resume",
         "review_action": request.review_action,
-        "human_comment": request.human_comment
+        "human_comment": request.human_comment,
+        "user_id": user_id,
     }
     
     return GraphResponse(
@@ -52,7 +57,8 @@ async def stream_graph(request: Request, thread_id: str):
     
     # Get the stored configuration
     run_data = run_configs[thread_id]
-    config = {"configurable": {"thread_id": thread_id}}
+    user_id = run_data.get("user_id") or DEFAULT_USER_ID
+    config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
     
     input_state = None
     if run_data["type"] == "start":
